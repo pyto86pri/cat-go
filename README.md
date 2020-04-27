@@ -9,7 +9,8 @@ $ go build
 ## Usage
 Usage is same as cat command.
 ```
-$ ./go-cat fileA fileB
+$ ./cat-go fileA fileB
+
 aaaaa
 aaaaa
 bbbbb
@@ -20,14 +21,16 @@ bbbbb
 #### -n
 Display with line number.
 ```
-$ ./go-cat -n fileA
+$ ./cat-go -n fileA
+
 1:aaaaa
 2:aaaaa
 ```
 #### -b
 Display with line number skipping blank lines.
 ```
-$ ./go-cat -n fileA
+$ ./cat-go -n fileA
+
 1:aaaaa
 
 2:aaaaa
@@ -35,7 +38,8 @@ $ ./go-cat -n fileA
 #### -s
 Display lines squeezing continuous blank lines to one blank line.
 ```
-$ ./go-cat -n fileA
+$ ./cat-go -n fileA
+
 aaaaa
 
 aaaaa
@@ -43,7 +47,8 @@ aaaaa
 #### -e
 Display lines with "$" at the end of each lines.
 ```
-$ ./go-cat -n fileA
+$ ./cat-go -n fileA
+
 aaaaa$
 $
 aaaaa$
@@ -51,7 +56,8 @@ aaaaa$
 #### -t
 Display lines with tab replaced with "^I".
 ```
-$ ./go-cat -n fileA
+$ ./cat-go -n fileA
+
 ^Iaaaaa
 
 aaaaa
