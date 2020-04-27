@@ -29,7 +29,7 @@ $ ./cat-go -n fileA
 #### -b
 Display with line number skipping blank lines.
 ```
-$ ./cat-go -n fileA
+$ ./cat-go -b fileA
 
 1:aaaaa
 
@@ -38,7 +38,7 @@ $ ./cat-go -n fileA
 #### -s
 Display lines squeezing continuous blank lines to one blank line.
 ```
-$ ./cat-go -n fileA
+$ ./cat-go -s fileA
 
 aaaaa
 
@@ -47,7 +47,7 @@ aaaaa
 #### -e
 Display lines with "$" at the end of each lines.
 ```
-$ ./cat-go -n fileA
+$ ./cat-go -e fileA
 
 aaaaa$
 $
@@ -56,7 +56,7 @@ aaaaa$
 #### -t
 Display lines with tab replaced with "^I".
 ```
-$ ./cat-go -n fileA
+$ ./cat-go -t fileA
 
 ^Iaaaaa
 
