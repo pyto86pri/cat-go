@@ -2,27 +2,33 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
-func readFile(fileName string) <-chan string {
-	ch := make(chan string)
+func readFile(fileName string) <-chan *Line {
+	ch := make(chan *Line)
 	go func() {
 		defer close(ch)
 		f, err := os.Open(fileName)
 		defer f.Close()
 
 		if err != nil {
+			ch <- &Line{err: errors.Wrap(err, "can't find file")}
 			return
 		}
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
-			ch <- scanner.Text()
+			ch <- &Line{raw: scanner.Text()}
 		}
 		if err := scanner.Err(); err != nil {
+			ch <- &Line{err: errors.Wrap(err, "can't scan file")}
 			return
 		}
 	}()
@@ -31,17 +37,23 @@ func readFile(fileName string) <-chan string {
 
 var squeezeBlank = flag.Bool("s", false, "")
 
-func doSqueezeBlank(lch <-chan string) <-chan string {
+func doSqueezeBlank(ctx context.Context, lch <-chan *Line) <-chan *Line {
 	lb := ""
-	ch := make(chan string)
+	ch := make(chan *Line)
 	go func() {
 		defer close(ch)
 		for l := range lch {
-			if lb == "" && l == "" {
-				continue
+			if l.err == nil {
+				if lb == "" && l.raw == "" {
+					continue
+				}
+				lb = l.raw
 			}
-			lb = l
-			ch <- l
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- l:
+			}
 		}
 	}()
 	return ch
@@ -49,13 +61,20 @@ func doSqueezeBlank(lch <-chan string) <-chan string {
 
 var number = flag.Bool("n", false, "")
 
-func doNumber(lch <-chan string, n *int) <-chan string {
-	ch := make(chan string)
+func doNumber(ctx context.Context, lch <-chan *Line, n *int) <-chan *Line {
+	ch := make(chan *Line)
 	go func() {
 		defer close(ch)
 		for l := range lch {
-			*n++
-			ch <- fmt.Sprintf("%d: %s", *n, l)
+			if l.err == nil {
+				*n++
+				l.prefix += fmt.Sprintf("%d: ", *n)
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- l:
+			}
 		}
 	}()
 	return ch
@@ -63,16 +82,21 @@ func doNumber(lch <-chan string, n *int) <-chan string {
 
 var numberNonblank = flag.Bool("b", false, "")
 
-func doNumberNonblank(lch <-chan string, n *int) <-chan string {
-	ch := make(chan string)
+func doNumberNonblank(ctx context.Context, lch <-chan *Line, n *int) <-chan *Line {
+	ch := make(chan *Line)
 	go func() {
 		defer close(ch)
 		for l := range lch {
-			if l == "" {
-				ch <- l
-			} else {
-				*n++
-				ch <- fmt.Sprintf("%d: %s", *n, l)
+			if l.err == nil {
+				if l.raw != "" {
+					*n++
+					l.prefix += fmt.Sprintf("%d:", *n)
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- l:
 			}
 		}
 	}()
@@ -81,12 +105,19 @@ func doNumberNonblank(lch <-chan string, n *int) <-chan string {
 
 var showEnds = flag.Bool("e", false, "")
 
-func doShowEnds(lch <-chan string) <-chan string {
-	ch := make(chan string)
+func doShowEnds(ctx context.Context, lch <-chan *Line) <-chan *Line {
+	ch := make(chan *Line)
 	go func() {
 		defer close(ch)
 		for l := range lch {
-			ch <- l + "$"
+			if l.err == nil {
+				l.suffix += "$"
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- l:
+			}
 		}
 	}()
 	return ch
@@ -94,49 +125,73 @@ func doShowEnds(lch <-chan string) <-chan string {
 
 var showTabs = flag.Bool("t", false, "")
 
-func doShowTabs(lch <-chan string) <-chan string {
-	ch := make(chan string)
-	replacer := strings.NewReplacer("\t", "^I")
+func doShowTabs(ctx context.Context, lch <-chan *Line) <-chan *Line {
+	ch := make(chan *Line)
 	go func() {
 		defer close(ch)
 		for l := range lch {
-			ch <- replacer.Replace(l)
+			if l.err == nil {
+				l.replacer = append(l.replacer, "\t", "^I")
+			}
+			select {
+			case <-ctx.Done():
+				return
+			case ch <- l:
+			}
 		}
 	}()
 	return ch
 }
 
-func writeLine(line string) {
+func writeLine(line *Line) {
 	fmt.Fprintln(os.Stdout, line)
 }
 
-func writeLines(lines <-chan string) {
+func writeLines(lines <-chan *Line) {
 	for l := range lines {
+		if l.err != nil {
+			log.Fatal(l.err)
+		}
 		writeLine(l)
 	}
+}
+
+// Line express line component
+type Line struct {
+	prefix   string
+	raw      string
+	suffix   string
+	replacer []string
+	err      error
+}
+
+func (l *Line) String() string {
+	replacer := strings.NewReplacer(l.replacer...)
+	return fmt.Sprint(l.prefix, replacer.Replace(l.raw), l.suffix)
 }
 
 func main() {
 	flag.Parse()
 	fileNames := flag.Args()
 	n := 0
+	ctx := context.TODO()
 
 	for _, fn := range fileNames {
 		ch := readFile(fn)
 		if *squeezeBlank {
-			ch = doSqueezeBlank(ch)
+			ch = doSqueezeBlank(ctx, ch)
 		}
 		if *showTabs {
-			ch = doShowTabs(ch)
+			ch = doShowTabs(ctx, ch)
 		}
 		if *number && !*numberNonblank {
-			ch = doNumber(ch, &n)
+			ch = doNumber(ctx, ch, &n)
 		}
 		if *numberNonblank {
-			ch = doNumberNonblank(ch, &n)
+			ch = doNumberNonblank(ctx, ch, &n)
 		}
 		if *showEnds {
-			ch = doShowEnds(ch)
+			ch = doShowEnds(ctx, ch)
 		}
 		writeLines(ch)
 	}
