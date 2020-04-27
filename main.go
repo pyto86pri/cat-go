@@ -79,7 +79,7 @@ func doNumberNonblank(lch <-chan string, n *int) <-chan string {
 	return ch
 }
 
-var showEnds = flag.Bool("E", false, "")
+var showEnds = flag.Bool("e", false, "")
 
 func doShowEnds(lch <-chan string) <-chan string {
 	ch := make(chan string)
@@ -92,14 +92,15 @@ func doShowEnds(lch <-chan string) <-chan string {
 	return ch
 }
 
-var showTabs = flag.Bool("T", false, "")
+var showTabs = flag.Bool("t", false, "")
 
 func doShowTabs(lch <-chan string) <-chan string {
 	ch := make(chan string)
+	replacer := strings.NewReplacer("\t", "^I")
 	go func() {
 		defer close(ch)
 		for l := range lch {
-			ch <- strings.ReplaceAll(l, "\\t", "^I")
+			ch <- replacer.Replace(l)
 		}
 	}()
 	return ch
@@ -109,8 +110,11 @@ func writeLine(line string) {
 	fmt.Fprintln(os.Stdout, line)
 }
 
-// TODO
-var showNonprinting = flag.Bool("v", false, "")
+func writeLines(lines <-chan string) {
+	for l := range lines {
+		writeLine(l)
+	}
+}
 
 func main() {
 	flag.Parse()
@@ -122,21 +126,19 @@ func main() {
 		if *squeezeBlank {
 			ch = doSqueezeBlank(ch)
 		}
+		if *showTabs {
+			ch = doShowTabs(ch)
+		}
 		if *number && !*numberNonblank {
 			ch = doNumber(ch, &n)
 		}
 		if *numberNonblank {
 			ch = doNumberNonblank(ch, &n)
 		}
-		if *showTabs {
-			ch = doShowTabs(ch)
-		}
 		if *showEnds {
 			ch = doShowEnds(ch)
 		}
-		for l := range ch {
-			writeLine(l)
-		}
+		writeLines(ch)
 	}
 
 }
